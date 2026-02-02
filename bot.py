@@ -1,21 +1,18 @@
-from dotenv import load_dotenv
-import os
-
-load_dotenv()  # legge le variabili dal file .env
-TOKEN = os.getenv("DISCORD_TOKEN")
 import discord
 from discord.ext import commands
 from discord import app_commands, FFmpegPCMAudio, ui
 import json
 import os
 
+# --- Intents e bot ---
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# --- File dati ---
 DB_FILE = "sanzioni.json"
 CONFIG_FILE = "config.json"
 
-# Inizializza file JSON
+# --- Inizializza JSON se non esiste ---
 for file_name in [DB_FILE, CONFIG_FILE]:
     if not os.path.exists(file_name):
         with open(file_name, "w") as f:
@@ -29,17 +26,13 @@ def salva_json(file, data):
     with open(file, "w") as f:
         json.dump(data, f, indent=4)
 
-# =========================
-# Evento on_ready
-# =========================
+# --- Evento on_ready ---
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     print(f"Bot online come {bot.user}")
 
-# =========================
-# Pulsante Revoca BAN
-# =========================
+# --- Pulsante Revoca BAN ---
 class RevocaButton(ui.View):
     def __init__(self, nome_roblox):
         super().__init__(timeout=None)
@@ -55,9 +48,7 @@ class RevocaButton(ui.View):
         await revoca_channel.send(f"Revoca BAN richiesta per {self.nome_roblox} da {interaction.user.mention}")
         await interaction.response.send_message("Richiesta inviata ✅", ephemeral=True)
 
-# =========================
-# Comando /setup
-# =========================
+# --- Comando /setup ---
 @bot.tree.command(name="setup", description="Configura canali, ruoli, link")
 @app_commands.describe(
     staff_channel="Canale staff",
@@ -88,17 +79,13 @@ async def setup(interaction: discord.Interaction,
     salva_json(CONFIG_FILE, config)
     await interaction.response.send_message("Setup completato ✅", ephemeral=True)
 
-# =========================
-# Comando /say
-# =========================
+# --- Comando /say ---
 @bot.tree.command(name="say", description="Il bot invia un messaggio a scelta")
 @app_commands.describe(messaggio="Il messaggio da far dire al bot")
 async def say(interaction: discord.Interaction, messaggio: str):
     await interaction.response.send_message(messaggio)
 
-# =========================
-# Comando /registra
-# =========================
+# --- Comando /registra ---
 @bot.tree.command(name="registra", description="Registra Warn/Kick/Ban")
 @app_commands.describe(
     tipo="Tipo di sanzione: warn/kick/ban",
@@ -107,6 +94,7 @@ async def say(interaction: discord.Interaction, messaggio: str):
     motivazione="Motivazione"
 )
 async def registra(interaction: discord.Interaction, tipo: str, nome_roblox: str, giorni: int = 0, motivazione: str = ""):
+    await interaction.response.defer(ephemeral=True)  # risponde subito, evita "non ha risposto"
     dati = carica_json(DB_FILE)
     user_id = nome_roblox.lower()
     config = carica_json(CONFIG_FILE)
@@ -137,29 +125,26 @@ async def registra(interaction: discord.Interaction, tipo: str, nome_roblox: str
     staff_channel = bot.get_channel(int(config.get("staff_channel", 0)))
     if staff_channel:
         await staff_channel.send(embed=embed, view=RevocaButton(nome_roblox))
-    await interaction.response.send_message("Sanzione registrata ✅", ephemeral=True)
+    await interaction.followup.send("Sanzione registrata ✅")  # usa followup dopo defer
 
-# =========================
-# Comando /ssu
-# =========================
+# --- Comando /ssu ---
 @bot.tree.command(name="ssu", description="Manda messaggio SSU pingando un ruolo")
 async def ssu(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     config = carica_json(CONFIG_FILE)
     channel = bot.get_channel(int(config.get("staff_channel", 0)))
     role_id = int(config.get("ssu_role", 0))
     role = interaction.guild.get_role(role_id)
     if not channel or not role:
-        await interaction.response.send_message("Setup non completato!", ephemeral=True)
+        await interaction.followup.send("Setup non completato!", ephemeral=True)
         return
     embed = discord.Embed(title=config.get("ssu_title", ""), description=config.get("ssu_message", ""), color=discord.Color.blue())
     if config.get("ssu_image"):
         embed.set_image(url=config["ssu_image"])
     await channel.send(content=role.mention, embed=embed)
-    await interaction.response.send_message("Messaggio SSU inviato ✅", ephemeral=True)
+    await interaction.followup.send("Messaggio SSU inviato ✅", ephemeral=True)
 
-# =========================
-# Evento vocale
-# =========================
+# --- Evento vocale ---
 @bot.event
 async def on_voice_state_update(member, before, after):
     config = carica_json(CONFIG_FILE)
@@ -177,7 +162,6 @@ async def on_voice_state_update(member, before, after):
         if staff_channel:
             await staff_channel.send(f"**{member.display_name}** è entrato nella voce {after.channel.name}")
 
-# =========================
-# Avvio
-# =========================
+# --- Avvio ---
+TOKEN = os.getenv("DISCORD_TOKEN")  # legge il token da Environment Variable
 bot.run(TOKEN)
